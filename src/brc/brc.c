@@ -54,7 +54,7 @@ void ensure_capsyschroot(char* executable_name)
 	/* if either chroot_permitted or chroot_effective is unset, abort */
 	if (chroot_permitted != CAP_SET || chroot_effective != CAP_SET) {
 		fprintf(stderr, "This file is missing the cap_sys_chroot capability. To remedy this,\n"
-				"Run 'setcap cap_sys_chroot=ep %s' as root. \n",executable_name);
+				"Run 'setcap cap_sys_chroot=ep %s' as root. \n", executable_name);
 		exit(1);
 	}
 
