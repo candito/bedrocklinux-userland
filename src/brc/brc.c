@@ -85,17 +85,26 @@ void break_out_of_chroot()
 		exit(1);
 	}
 	/*
-	 * We're in the dirt.  cd up the tree until we hit the actual, absolute
-	 * root directory.  We'll know we're there when the current and parent
-	 * directories both have the same inode.
+	 * We're in the dirt.  Change directory up the tree until we hit the
+	 * actual, absolute root directory.  We'll know we're there when the
+	 * current and parent directories both have the same device number and
+	 * inode.
+	 *
+	 * Note that it is technically possible for a directory and its parent
+	 * directory to have the same device number and inode without being the
+	 * real root. For example, this could occur if one bind mounts a directory
+	 * into itself, or using a filesystem (e.g. fuse) which does not use unique
+	 * inode numbers for every directory.  However, provided the
+	 * /bedrock/clients/<client>/ structure on the real root does not have any
+	 * of these situations, the chdir("/") above will bypass all of them.
 	 */
 	struct stat stat_pwd;
 	struct stat stat_parent;
 	do {
 		chdir("..");
-		stat(".", &stat_pwd);
-		stat("..", &stat_parent);
-	} while(stat_pwd.st_ino != stat_parent.st_ino);
+		lstat(".", &stat_pwd);
+		lstat("..", &stat_parent);
+	} while(stat_pwd.st_ino != stat_parent.st_ino || stat_pwd.st_dev != stat_parent.st_dev);
 
 	/* We're at the absolute root directory, so set the root to where we are. */
 	chroot(".");
