@@ -130,23 +130,14 @@ int main(int argc, char* argv[])
 	 */
 
 	/*
-	 * "bedrock" client goes directly to the (real) root; everyone else goes in CLIENTDIR.
-	 *
 	 * /bedrock/clients/squeeze\0
 	 * |               ||     |\+ 1 for terminating NULL
 	 * |               |\-----+ strlen(argv[1])
 	 * \---------------+ CLIENTDIRLEN
-	 *
-	 * /\0
-	 * \-+ always shorter than above since "bedrock" is more than two characters.
 	 */
 	char client_path[CLIENTDIRLEN + strlen(argv[1]) + 1];
-	if (strcmp(argv[1],"bedrock") == 0) {
-		strcpy(client_path, "/");
-	} else {
-		strcpy(client_path, CLIENTDIR);
-		strcat(client_path, argv[1]);
-	}
+	strcpy(client_path, CLIENTDIR);
+	strcat(client_path, argv[1]);
 
 	/*
 	 * /bedrock/etc/clients.d/squeeze.conf\0
@@ -172,10 +163,12 @@ int main(int argc, char* argv[])
 	/*
 	 * Sanity checks
 	 * - ensure this process has the required capabilities
-	 * - ensure config exists and is secure
+	 * - ensure config exists and is secure if not using pid1 alias
 	 */
 	ensure_capsyschroot(argv[0]);
-	ensure_config_secure(config_path);
+	if (strcmp(argv[1], "pid1") != 0) {
+		ensure_config_secure(config_path);
+	}
 
 	/*
 	 * If we're in a chroot, break out
@@ -183,12 +176,36 @@ int main(int argc, char* argv[])
 	break_out_of_chroot();
 
 	/*
-	 * Try to cd to the client's root (relative to the now absolute root we're
-	 * at).  If this fails, it could be because the client doesn't actually exist.
+	 * The next goal is to try to change directory to the target client's root
+	 * so we can chroot(".") the appropriate root.
+	 *
+	 * All of the clients will be in client_path relative to the real root
+	 * except one, the one that provides PID1, which will be in the real root.
+	 *
+	 * When the PID1 client is chosen, it is bind-mounted to its client_path.
+	 * Thus, from the real root we can detect if the target client is the real
+	 * root client by comparing device number and inode number of the real root
+	 * to the client_path.  The down side to this technique, however, is that
+	 * if somehow that bind-mount is removed, one cannot brc to the real root.
+	 * Without access to the real root, problematic situations such as that
+	 * bind-mount being removed will be difficult to resolve.
+	 *
+	 * In case of the above situation, "pid1" is provided as an alias to
+	 * whatever client provides pid1.  Note that the pid1 client cannot be
+	 * disabled.
 	 */
-	if (chdir(client_path) != 0) {
-		fprintf(stderr, "Could not find client, aborting.");
-		exit(1);
+	struct stat stat_real_root;
+	struct stat stat_client_path;
+	lstat(".", &stat_real_root);
+	lstat(client_path, &stat_client_path);
+
+	if (strcmp(argv[1], "pid1") != 0 &&
+			(stat_real_root.st_dev != stat_client_path.st_dev ||
+			 stat_real_root.st_ino != stat_client_path.st_ino)) {
+		if (chdir(client_path) != 0) {
+			fprintf(stderr, "Could not find client, aborting.");
+			exit(1);
+		}
 	}
 
 	/*
@@ -216,9 +233,11 @@ int main(int argc, char* argv[])
 		/*
 		 * The desired command was given as an argument to this program; use
 		 * that.
+		 *
 		 * brc squeeze ls -l
-		 * ^ argv      |
-		 *             ^ argv + 2
+		 * |   |       \ argv + 2
+		 * |   \argv+1
+		 * \ argv
 		 */
 		cmd = argv + 2;
 	} else {
