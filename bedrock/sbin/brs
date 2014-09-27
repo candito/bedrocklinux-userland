@@ -307,20 +307,14 @@ EOF
 	cur=$(expr $cur + 1)
 	bri -c $client union | preexist_filter | awk -v"client=$client" -F'([ ,:]|\\t)+' '
 		{
-			# mount bru at the mount point for the client
+			# first arg should be bru mount point
 			# e.g.: /bedrock/sbin/bru /bedrock/clients/squeeze/etc
 			cmd = "/bedrock/sbin/bru /bedrock/clients/"client$1
-			# first arg should be the client self-view (without mounts)
-			# e.g.: /bedrock/clients/squeeze/bedrock/clients/squeeze/etc
-			#       |               |                               \ self-view of /etc without mounts
-			#       |               \ squeeze chroot is here
-			#       \ absolute root
-			cmd = cmd" /bedrock/clients/"client"/bedrock/clients/"client$1
 			# second arg should be the equivalent location in the core
 			cmd = cmd" "$1
 			# remaining args are files to be redirected to the core
 			for (i=2; i<=NF; i++) {
-				cmd = cmd " /"$i
+				cmd = cmd " "$i
 			}
 			# background it so this process will return
 			cmd = cmd "&"
